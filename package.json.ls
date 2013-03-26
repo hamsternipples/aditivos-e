@@ -1,7 +1,7 @@
 #!/usr/bin/env lsc -cj
 
 name: \aditivios-e
-version: '0.1.0'
+version: '0.0.1'
 main: 'index.js'
 description: 'open sourcing the EU regulations on food additives'
 keywords: [ 'EU' 'additives' 'aditivos' 'alimentacion' 'food' ]
