@@ -8,12 +8,13 @@ within = (x, xx, v = 0.1) -> Math.abs(x - xx) <= v
 aditivos = {}
 aditivo_footnotes = []
 groups = {}
+permitted_groups = {}
 max_quantity = {}
 
 parse = (data) ->
-	#state = 'partb'
+	var t, p, has_max
+	var cur_section, cur_num, cur_footnote, cur_exception
 	state = 'partb'
-	var cur_section, cur_num, t, p, has_max
 	even = false
 	show_t = false
 	num_groups = 0
@@ -57,7 +58,7 @@ parse = (data) ->
 					#else
 						# XXX fuck the footnotes for now... me la sudan
 						#console.log "FOOTNOTE!!", t
-						#if within t.y, p.y, 0.2 then aditivo_footnotes[*-1] += unesc(T).trimRight!
+						#if within t.y, p.y, 0.2 then aditivo_footnotes[*-1] +=  q_ T
 						#else aditivo_footnotes.push q_ T
 				| \name =>
 					if (even and t.x is 26.88) or (!even and t.x is 27.85)
@@ -73,7 +74,7 @@ parse = (data) ->
 						#console.log "GROUP!!", cur_group
 				| \group_continue =>
 					if within t.y, p.y, 0.1
-						cur_group += ' '+unesc(T).trimRight!
+						cur_group += ' '+ q_ T
 					else
 						has_max = true
 						groups[cur_group] = {}
@@ -98,6 +99,7 @@ parse = (data) ->
 				| \group_number =>
 					if (T).indexOf('EN') is 0
 						#console.log "PAGE!!", t
+						# XXX FIXME!! I should not rely on "EN" - this isn't language independent
 						state = \group_header_number
 					else if T.indexOf('E%20') is 0
 						cur_num = q_ T
@@ -112,9 +114,9 @@ parse = (data) ->
 					state = \group_name_continue
 				| \group_name_continue =>
 					if within(t.y, p.y, 0.1) and within(t.x, p.x, 10)
-						cur_name += ' '+unesc(T).trimRight!
+						cur_name += ' '+ q_ T
 					else if within(t.x, p.x, 2)
-						cur_name += '\n'+unesc(T).trimRight!
+						cur_name += '\n'+ q_ T
 					else
 						state = \group_max
 						continue
@@ -130,7 +132,7 @@ parse = (data) ->
 						console.log "next page!"
 						state = \group_header_number
 					else if t.x > 50
-						cur_max += ' '+unesc(T).trimRight!
+						cur_max += ' '+ q_ T
 						console.log 1
 					else if not has_max
 						groups[cur_group][cur_num] = cur_name
@@ -146,7 +148,7 @@ parse = (data) ->
 					else
 						/*
 						# XXX save t.x to see if I should add a newline
-						cur_name += unesc(T).trimRight!
+						cur_name +=  q_ T
 						if cur_num is 'E 968'
 							#console.log "GROUP NAME!!", t
 							state = \debug
@@ -155,39 +157,96 @@ parse = (data) ->
 				| \parte =>
 					if T is \PART%20E
 						show_t = true
+						cur_num = void
 						state = \cat_header
 				| \cat_header =>
-					if within t.x, 16.03
+					if within(t.x, 16.03, 2)
 						state = \cat_header_continue
 				| \cat_header_continue =>
 					console.log "cat_header", t.y, p.y, t.x, p.x
 					if not within(t.x, p.x, 2)
 						state = \cat_desc
-						cur_cat = T
+						continue
 				| \cat_desc =>
-					cur_cat_desc = T
-					state = \cat_num
+					cur_cat = q_ T
+					state = \cat_desc_continue
+				| \cat_desc_continue =>
+					if within(t.x, p.x, 2)
+						cur_cat += ' ' + q_ T
+					else
+						console.log "cur_cat:", cur_cat
+						permitted_groups[cur_cat] = {}
+						state = \cat_num
 				| \cat_num =>
-					cur_num = T
-					state = \cat_name
+					if cur_num
+						v = [cur_name, cur_max]
+						if cur_footnote
+							v.push cur_footnote
+							cur_footnote = void
+						if cur_exception
+							v.push cur_exception
+							cur_exception = void
+						console.log "cur_cat:", cur_cat
+						if permitted_groups[cur_cat][cur_num] then cur_num += '*'
+						permitted_groups[cur_cat][cur_num] = v
+						cur_num = void
+					if within t.y, 44.52
+						# x: 73.97
+						# y:39.86
+
+						# x: 68.51
+						# y:44.52
+						# x: 63.06
+						# y:44.52
+						cur_num = q_ T
+						state = \cat_name
+					else if within t.y, 39.86
+						if footnote_idx = T.match /(\d+)/ .0
+							#state =
+							permitted_groups[cur_cat][footnote_idx] = q_ T
+						else
+							console.log "UHOH"
+							return
+					else if within t.y, 48.15
+						state = \cat_header
 				| \cat_name =>
-					cur_name = T
-					state = \cat_max
+					cur_name = q_ T
+					state = \cat_name_continue
+				| \cat_name_continue =>
+					if within t.y, p.y, 1
+						cur_name += ' ' + q_ T
+					else
+						state = \cat_max
+						continue
 				| \cat_max =>
-					cur_max = T
+					cur_max = q_ T
 					state = \cat_footnote
 				| \cat_footnote =>
 					if within t.x, p.x
-						cur_footnote = T
-						return
+						cur_footnote = q_ T
+						state = \cat_exceptions
 					else
-						return
 						state = \cat_num
 						continue
+				| \cat_exceptions =>
+					if within t.x, p.x
+						cur_exception = q_ T
+						state = \cat_exceptions_continue
+					else
+						state = \cat_num
+						continue
+				| \cat_exceptions_continue =>
+					if within(t.x, p.x, 0.1) and within(t.y, p.y, 10)
+						cur_exception += ' '+ q_ T
+					else if within(t.y, p.y, 2)
+						cur_exception += ' '+ q_ T
+					else
+						state = \cat_num
+						continue
+
+					#return
 				| \debug => #console.log ":::", t
 				idx++
-
-	console.log groups
 
 
 
@@ -201,4 +260,5 @@ Fs.readFile 'pdf/l_29520111112en.json', 'utf8', (err, data) ->
 
 		parser.loadPDF 'pdf/l_29520111112en.pdf'
 	else parse JSON.parse data
+	console.log permitted_groups
 
